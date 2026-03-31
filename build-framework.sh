@@ -1,6 +1,6 @@
 #!/bin/bash
 # build-framework.sh
-# Builds the Future.xcframework from modified Xray-core source with anti-DPI protocol modifications.
+# Builds the Future.xcframework from libXray + modified Xray-core with anti-DPI protocol modifications.
 #
 # Prerequisites:
 #   - macOS with Xcode installed
@@ -11,12 +11,6 @@
 #
 # Usage:
 #   ./build-framework.sh
-#
-# The script will:
-#   1. Clone Xray-core (v26.3.27)
-#   2. Apply anti-DPI protocol modifications from Xray-core-mod/
-#   3. Build Future.xcframework via gomobile bind
-#   4. Replace the existing framework in xFutureTunnel/
 
 set -euo pipefail
 
@@ -26,9 +20,7 @@ XRAY_REPO="https://github.com/XTLS/Xray-core.git"
 BUILD_DIR="/tmp/xray-build-$$"
 OUTPUT="$SCRIPT_DIR/xFutureTunnel/Future.xcframework"
 
-echo "=== Building Future.xcframework with anti-DPI modifications ==="
-echo "Xray-core version: $XRAY_VERSION"
-echo "Build directory:   $BUILD_DIR"
+echo "=== Building Future.xcframework (libXray + anti-DPI mods) ==="
 
 # Check prerequisites
 for cmd in go gomobile gobind; do
@@ -38,70 +30,65 @@ for cmd in go gomobile gobind; do
     fi
 done
 
-GO_VERSION=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+')
-if [[ "$(printf '%s\n' "1.26" "$GO_VERSION" | sort -V | head -1)" != "1.26" ]]; then
-    echo "ERROR: Go 1.26+ required, found $GO_VERSION"
-    exit 1
-fi
-
-# Clone Xray-core
-echo ""
-echo "Step 1: Cloning Xray-core $XRAY_VERSION..."
+# Setup build directory
 rm -rf "$BUILD_DIR"
-git clone --depth 1 --branch "$XRAY_VERSION" "$XRAY_REPO" "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 
-# Apply modifications
+# Step 1: Clone Xray-core and apply anti-DPI modifications
 echo ""
-echo "Step 2: Applying anti-DPI protocol modifications..."
+echo "Step 1: Setting up modified Xray-core..."
+git clone --depth 1 --branch "$XRAY_VERSION" "$XRAY_REPO" "$BUILD_DIR/Xray-core"
 
 MOD_DIR="$SCRIPT_DIR/Xray-core-mod"
 
-# Modified files
-cp "$MOD_DIR/proxy/vless/encryption/common.go"   "$BUILD_DIR/proxy/vless/encryption/common.go"
-cp "$MOD_DIR/proxy/vless/encryption/client.go"    "$BUILD_DIR/proxy/vless/encryption/client.go"
-cp "$MOD_DIR/proxy/vless/encryption/server.go"    "$BUILD_DIR/proxy/vless/encryption/server.go"
-cp "$MOD_DIR/proxy/vless/encoding/addons.go"      "$BUILD_DIR/proxy/vless/encoding/addons.go"
-cp "$MOD_DIR/proxy/vless/outbound/outbound.go"    "$BUILD_DIR/proxy/vless/outbound/outbound.go"
-cp "$MOD_DIR/proxy/vmess/aead/encrypt.go"         "$BUILD_DIR/proxy/vmess/aead/encrypt.go"
-cp "$MOD_DIR/transport/internet/reality/reality.go" "$BUILD_DIR/transport/internet/reality/reality.go"
-cp "$MOD_DIR/transport/internet/finalmask/fragment/conn.go" "$BUILD_DIR/transport/internet/finalmask/fragment/conn.go"
+# Apply modified files
+cp "$MOD_DIR/proxy/vless/encryption/common.go"   "$BUILD_DIR/Xray-core/proxy/vless/encryption/common.go"
+cp "$MOD_DIR/proxy/vless/encryption/client.go"    "$BUILD_DIR/Xray-core/proxy/vless/encryption/client.go"
+cp "$MOD_DIR/proxy/vless/encryption/server.go"    "$BUILD_DIR/Xray-core/proxy/vless/encryption/server.go"
+cp "$MOD_DIR/proxy/vless/encoding/addons.go"      "$BUILD_DIR/Xray-core/proxy/vless/encoding/addons.go"
+cp "$MOD_DIR/proxy/vless/outbound/outbound.go"    "$BUILD_DIR/Xray-core/proxy/vless/outbound/outbound.go"
+cp "$MOD_DIR/proxy/vmess/aead/encrypt.go"         "$BUILD_DIR/Xray-core/proxy/vmess/aead/encrypt.go"
+cp "$MOD_DIR/transport/internet/reality/reality.go" "$BUILD_DIR/Xray-core/transport/internet/reality/reality.go"
+cp "$MOD_DIR/transport/internet/finalmask/fragment/conn.go" "$BUILD_DIR/Xray-core/transport/internet/finalmask/fragment/conn.go"
 
-# New files
-cp "$MOD_DIR/proxy/vless/encryption/scatter.go"   "$BUILD_DIR/proxy/vless/encryption/scatter.go"
-cp "$MOD_DIR/proxy/vless/encryption/heartbeat.go"  "$BUILD_DIR/proxy/vless/encryption/heartbeat.go"
+# Apply new files
+cp "$MOD_DIR/proxy/vless/encryption/scatter.go"   "$BUILD_DIR/Xray-core/proxy/vless/encryption/scatter.go"
+cp "$MOD_DIR/proxy/vless/encryption/heartbeat.go"  "$BUILD_DIR/Xray-core/proxy/vless/encryption/heartbeat.go"
 
-# Future gomobile binding package
-mkdir -p "$BUILD_DIR/future"
-cp "$MOD_DIR/future/future.go" "$BUILD_DIR/future/future.go"
+echo "  Anti-DPI modifications applied."
 
-echo "  Applied modifications:"
-echo "    - Record size distribution (10/20/70 three-tier randomization)"
-echo "    - ScatterConn TCP fragmentation (64-512 byte chunks, 0-2ms jitter)"
-echo "    - HeartbeatConn idle keepalive (5-15s intervals)"
-echo "    - VLESS header padding (16-64 bytes random)"
-echo "    - VMess AEAD padding (0-32 bytes trailing)"
-echo "    - SessionID timestamp jitter (±300s for REALITY)"
-echo "    - Post-handshake packet fragmentation (packets 2-4)"
-echo "    - HeartbeatConn integration for non-XTLS flows"
+# Step 2: Copy libXray with replace directive pointing to local Xray-core
+echo ""
+echo "Step 2: Setting up libXray..."
+cp -r "$SCRIPT_DIR/libXray" "$BUILD_DIR/libXray"
 
-# Verify build
+# Update replace directive to point to build dir
+cd "$BUILD_DIR/libXray"
+sed -i.bak "s|replace github.com/xtls/xray-core => ../Xray-core|replace github.com/xtls/xray-core => $BUILD_DIR/Xray-core|" go.mod
+rm -f go.mod.bak
+
+echo "  libXray configured."
+
+# Step 3: Verify build
 echo ""
 echo "Step 3: Verifying Go build..."
-cd "$BUILD_DIR"
-go build ./...
+cd "$BUILD_DIR/libXray"
+go build $(go list ./... | grep -v build/template | grep -v download_geo | grep -v desktop_bin)
 echo "  Go build: OK"
 
-# Build xcframework
+# Step 4: Build xcframework via gomobile
 echo ""
 echo "Step 4: Building Future.xcframework..."
+cd "$BUILD_DIR/libXray"
 gomobile bind -v \
     -target=ios,macos \
     -o "$BUILD_DIR/Future.xcframework" \
-    ./future/
+    -ldflags="-s -w" \
+    .
 
-echo "  Framework built: $BUILD_DIR/Future.xcframework"
+echo "  Framework built."
 
-# Replace existing framework
+# Step 5: Replace existing framework
 echo ""
 echo "Step 5: Replacing existing framework..."
 rm -rf "$OUTPUT"
@@ -110,6 +97,12 @@ cp -R "$BUILD_DIR/Future.xcframework" "$OUTPUT"
 echo ""
 echo "=== Build complete ==="
 echo "Framework: $OUTPUT"
+echo ""
+echo "Features included:"
+echo "  - libXray (URI parsing, speed test, geo tools, iOS memory management)"
+echo "  - Anti-DPI: ScatterConn, HeartbeatConn, record randomization"
+echo "  - Anti-DPI: VLESS/VMess padding, SessionID jitter, post-handshake fragmentation"
+echo "  - Apple packet flow integration (RegisterAppleNetworkInterface)"
 echo ""
 echo "To verify, open xNetFuture.xcworkspace in Xcode and build."
 
