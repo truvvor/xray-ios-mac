@@ -90,7 +90,7 @@
     if (info[@"ping"] && !selected) {
         self.pingLabel.hidden = NO;
         NSInteger rtt = [info[@"ping"][@"rtt"] integerValue];
-        self.pingLabel.stringValue = [NSString stringWithFormat:@"%ldms", (long)rtt];
+        self.pingLabel.stringValue = [NSString stringWithFormat:NSLocalizedString(@"%ldms", nil), (long)rtt];
         
         if (rtt < 200) {
             self.pingLabel.textColor = [NSColor systemGreenColor];

@@ -45,9 +45,9 @@
     switch (ETVPNManager.sharedManager.status) {
         case YDVPNStatusConnected:{
             self.statusLab.textColor = [UIColor systemGreenColor];
-            self.statusLab.text = @"Connected";
-            
-            [self.startConnectButton setTitle:@"Disconnect" forState:UIControlStateNormal];
+            self.statusLab.text = NSLocalizedString(@"Connected", nil);
+
+            [self.startConnectButton setTitle:NSLocalizedString(@"Disconnect", nil) forState:UIControlStateNormal];
             [self.startConnectButton setTitleColor:UIColor.redColor forState:UIControlStateNormal];
             
             if (self.protocolTextField.text.length == 0) {
@@ -58,14 +58,14 @@
             
         case YDVPNStatusConnecting: {
             self.statusLab.textColor = [UIColor systemOrangeColor];
-            self.statusLab.text = @"Connecting";
+            self.statusLab.text = NSLocalizedString(@"Connecting", nil);
         }
             break;
             
         case YDVPNStatusDisconnected:{
             self.statusLab.textColor = [UIColor systemRedColor];
-            self.statusLab.text = @"Disconnected";
-            [self.startConnectButton setTitle:@"Connect" forState:UIControlStateNormal];
+            self.statusLab.text = NSLocalizedString(@"Disconnected", nil);
+            [self.startConnectButton setTitle:NSLocalizedString(@"Connect", nil) forState:UIControlStateNormal];
             [self.startConnectButton setTitleColor:UIColor.systemGreenColor forState:UIControlStateNormal];
         }
             break;

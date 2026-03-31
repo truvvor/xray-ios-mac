@@ -40,7 +40,7 @@
                         <constraint firstAttribute="width" constant="140" id="0SR-MO-tHJ"/>
                         <constraint firstAttribute="height" constant="16" id="tmV-MP-oVO"/>
                     </constraints>
-                    <textFieldCell key="cell" lineBreakMode="clipping" title="中ID叫撒放i就打死哦放假哦啊思达；i建峰i；ods" id="lbq-83-YvQ">
+                    <textFieldCell key="cell" lineBreakMode="clipping" title="" id="lbq-83-YvQ">
                         <font key="font" metaFont="system"/>
                         <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
                         <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>

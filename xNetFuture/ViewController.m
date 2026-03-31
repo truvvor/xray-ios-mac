@@ -312,7 +312,7 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
     [[ETVPNManager sharedManager] echo];
     
     if (!currentConfiguration) {
-        [_delegate makeToast:NSLocalizedString(@"Configuration Invaild", nil)];
+        [_delegate makeToast:NSLocalizedString(@"Configuration Invalid", nil)];
         return;
     }
     __block BOOL found = NO;
@@ -356,7 +356,7 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
 
 -(void)handleResponse:(nullable NSString *)response {
     if (!response) {
-        self.statusLab.stringValue = @"Invalid Configuration";
+        self.statusLab.stringValue = NSLocalizedString(@"Configuration Invalid", nil);
         return;
     }
     [self parse:response];
@@ -414,7 +414,7 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
         [self.tableView reloadData];
     }
     if (!configuration) {
-        self.statusLab.stringValue = @"Invalid Configuration";
+        self.statusLab.stringValue = NSLocalizedString(@"Configuration Invalid", nil);
         return;
     }
     [self parseOutbounds:configuration uri:uri];
@@ -439,7 +439,7 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
     }];
     
     if (proxy) {
-        self.statusLab.stringValue = @"Configuration Vaild";
+        self.statusLab.stringValue = NSLocalizedString(@"Configuration Valid", nil);
         NSArray <NSDictionary *>*vnext = proxy[@"settings"][@"vnext"];
         self.addressLabel.stringValue = vnext[0][@"address"];
         self.portLab.stringValue = [NSString stringWithFormat:@"%@", vnext[0][@"port"]];
@@ -497,13 +497,13 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
     }];
     if (connected) {
         self.statusLab.textColor = [NSColor systemGreenColor];
-        self.statusLab.stringValue = @"Connected";
+        self.statusLab.stringValue = NSLocalizedString(@"Connected", nil);
         self.startConnectButton.title = NSLocalizedString(@"Disconnect", nil);
         self.startConnectButton.layer.backgroundColor = [NSColor systemRedColor].CGColor;
     }
     else {
         self.statusLab.textColor = [NSColor systemRedColor];
-        self.statusLab.stringValue = @"Disconnected";
+        self.statusLab.stringValue = NSLocalizedString(@"Disconnected", nil);
         self.startConnectButton.title = NSLocalizedString(@"Connect", nil);
         self.startConnectButton.layer.backgroundColor = [NSColor colorWithRed:2/255.0 green:187/255.0 blue:0/255.0 alpha:1.0].CGColor;
     }
@@ -513,8 +513,8 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
     switch (ETVPNManager.sharedManager.status) {
         case YDVPNStatusConnected:{
             self.statusLab.textColor = [NSColor systemGreenColor];
-            self.statusLab.stringValue = @"Connected";
-            
+            self.statusLab.stringValue = NSLocalizedString(@"Connected", nil);
+
             self.startConnectButton.title = NSLocalizedString(@"Disconnect", nil);
             self.startConnectButton.layer.backgroundColor = [NSColor systemRedColor].CGColor;
             
@@ -528,14 +528,14 @@ NSString *const kYDApplicationVPNListKey = @"kYDApplicationVPNListKey";
             
         case YDVPNStatusConnecting: {
             self.statusLab.textColor = [NSColor systemOrangeColor];
-            self.statusLab.stringValue = @"Connecting";
+            self.statusLab.stringValue = NSLocalizedString(@"Connecting", nil);
         }
             break;
             
         case YDVPNStatusDisconnected:{
             self.statusLab.textColor = [NSColor systemRedColor];
-            self.statusLab.stringValue = @"Disconnected";
-            
+            self.statusLab.stringValue = NSLocalizedString(@"Disconnected", nil);
+
             self.startConnectButton.title = NSLocalizedString(@"Connect", nil);
             self.startConnectButton.layer.backgroundColor = [NSColor colorWithRed:2/255.0 green:187/255.0 blue:0/255.0 alpha:1.0].CGColor;
         }

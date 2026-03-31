@@ -1,0 +1,44 @@
+/* English localization - xNetFuture macOS */
+
+/* Connection states */
+"Connected" = "Connected";
+"Disconnected" = "Disconnected";
+"Connecting" = "Connecting";
+
+/* Button titles */
+"Connect" = "Connect";
+"Disconnect" = "Disconnect";
+
+/* Configuration messages */
+"Configuration Invalid" = "Configuration Invalid";
+"Configuration Valid" = "Configuration Valid";
+"Configuration Added" = "Configuration Already Added";
+
+/* Status */
+"IDLE" = "IDLE";
+
+/* UI Labels */
+"Speed Test" = "Speed Test";
+"Global Mode" = "Global Mode";
+"Subscription URL" = "Subscription URL";
+"Remark:" = "Remark:";
+"Address:" = "Address:";
+"Port:" = "Port:";
+"Protocol:" = "Protocol:";
+"Status:" = "Status:";
+
+/* Proxy info */
+"HTTP" = "HTTP";
+"SOCKS" = "SOCKS";
+
+/* VPN description */
+"VPN (Virtual Location Helper)" = "VPN (Virtual Location Helper)";
+
+/* Tips */
+"Tips" = "Tips: This address is for trial use only and does not guarantee service availability. You need to replace it with your own server address";
+
+/* Ping */
+"%ldms" = "%ldms";
+
+/* Echo */
+"Echo" = "Echo";

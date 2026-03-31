@@ -1,0 +1,44 @@
+/* Chinese (Simplified) localization - xNetFuture macOS */
+
+/* Connection states */
+"Connected" = "已连接";
+"Disconnected" = "已断开";
+"Connecting" = "连接中...";
+
+/* Button titles */
+"Connect" = "连接";
+"Disconnect" = "断开";
+
+/* Configuration messages */
+"Configuration Invalid" = "配置无效";
+"Configuration Valid" = "配置有效";
+"Configuration Added" = "配置已添加";
+
+/* Status */
+"IDLE" = "空闲";
+
+/* UI Labels */
+"Speed Test" = "测速";
+"Global Mode" = "全局模式";
+"Subscription URL" = "订阅地址";
+"Remark:" = "备注:";
+"Address:" = "地址:";
+"Port:" = "端口:";
+"Protocol:" = "协议:";
+"Status:" = "状态:";
+
+/* Proxy info */
+"HTTP" = "HTTP";
+"SOCKS" = "SOCKS";
+
+/* VPN description */
+"VPN (Virtual Location Helper)" = "VPN (虚拟定位助手)";
+
+/* Tips */
+"Tips" = "提示：此地址仅供试用，不保证服务可用性。您需要替换为自己的服务器地址";
+
+/* Ping */
+"%ldms" = "%ld毫秒";
+
+/* Echo */
+"Echo" = "回声测试";

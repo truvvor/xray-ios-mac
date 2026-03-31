@@ -1,0 +1,44 @@
+/* Russian localization - xNetFuture macOS */
+
+/* Connection states */
+"Connected" = "Подключено";
+"Disconnected" = "Отключено";
+"Connecting" = "Подключение...";
+
+/* Button titles */
+"Connect" = "Подключить";
+"Disconnect" = "Отключить";
+
+/* Configuration messages */
+"Configuration Invalid" = "Неверная конфигурация";
+"Configuration Valid" = "Конфигурация корректна";
+"Configuration Added" = "Конфигурация уже добавлена";
+
+/* Status */
+"IDLE" = "Ожидание";
+
+/* UI Labels */
+"Speed Test" = "Тест скорости";
+"Global Mode" = "Глобальный режим";
+"Subscription URL" = "URL подписки";
+"Remark:" = "Название:";
+"Address:" = "Адрес:";
+"Port:" = "Порт:";
+"Protocol:" = "Протокол:";
+"Status:" = "Статус:";
+
+/* Proxy info */
+"HTTP" = "HTTP";
+"SOCKS" = "SOCKS";
+
+/* VPN description */
+"VPN (Virtual Location Helper)" = "VPN (Виртуальный помощник)";
+
+/* Tips */
+"Tips" = "Этот адрес предоставлен для пробного использования и не гарантирует доступность сервиса. Замените его адресом вашего сервера";
+
+/* Ping */
+"%ldms" = "%ldмс";
+
+/* Echo */
+"Echo" = "Проверка";
