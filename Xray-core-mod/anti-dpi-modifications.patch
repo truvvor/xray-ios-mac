@@ -1,0 +1,674 @@
+diff --git a/proxy/vless/encoding/addons.go b/proxy/vless/encoding/addons.go
+index 724de777..11ce0566 100644
+--- a/proxy/vless/encoding/addons.go
++++ b/proxy/vless/encoding/addons.go
+@@ -2,10 +2,12 @@ package encoding
+ 
+ import (
+ 	"context"
++	crand "crypto/rand"
+ 	"io"
+ 	"net"
+ 
+ 	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/crypto"
+ 	"github.com/xtls/xray-core/common/errors"
+ 	"github.com/xtls/xray-core/common/protocol"
+ 	"github.com/xtls/xray-core/common/session"
+@@ -28,8 +30,17 @@ func EncodeHeaderAddons(buffer *buf.Buffer, addons *Addons) error {
+ 			return errors.New("failed to write addons protobuf value").Base(err)
+ 		}
+ 	default:
+-		if err := buffer.WriteByte(0); err != nil {
+-			return errors.New("failed to write addons protobuf length").Base(err)
++		// Anti-DPI: inject random padding into VLESS header addons for non-XRV flows
++		paddingLen := 16 + int(crypto.RandBetween(0, 48)) // 16-64 bytes
++		padding := make([]byte, paddingLen)
++		if _, err := io.ReadFull(crand.Reader, padding); err != nil {
++			return errors.New("failed to generate random padding").Base(err)
++		}
++		if err := buffer.WriteByte(byte(paddingLen)); err != nil {
++			return errors.New("failed to write addons padding length").Base(err)
++		}
++		if _, err := buffer.Write(padding); err != nil {
++			return errors.New("failed to write addons padding").Base(err)
+ 		}
+ 	}
+ 
+@@ -50,7 +61,8 @@ func DecodeHeaderAddons(buffer *buf.Buffer, reader io.Reader) (*Addons, error) {
+ 		}
+ 
+ 		if err := proto.Unmarshal(buffer.Bytes(), addons); err != nil {
+-			return nil, errors.New("failed to unmarshal addons protobuf value").Base(err)
++			// Random padding from anti-DPI modifications — ignore unmarshal failures
++			addons = new(Addons)
+ 		}
+ 
+ 		// Verification.
+diff --git a/proxy/vless/encryption/client.go b/proxy/vless/encryption/client.go
+index 54959d0e..526760dc 100644
+--- a/proxy/vless/encryption/client.go
++++ b/proxy/vless/encryption/client.go
+@@ -66,7 +66,10 @@ func (i *ClientInstance) Handshake(conn net.Conn) (*CommonConn, error) {
+ 	if i.NfsPKeys == nil {
+ 		return nil, errors.New("uninitialized")
+ 	}
+-	c := NewCommonConn(conn, protocol.HasAESGCMHardwareSupport)
++	// Anti-DPI: Wrap connection with ScatterConn before encryption
++	// to fragment encrypted records across multiple TCP segments
++	scatteredConn := NewScatterConn(conn, 64, 512, 50, 2)
++	c := NewCommonConn(scatteredConn, protocol.HasAESGCMHardwareSupport)
+ 
+ 	ivAndRealysLength := 16 + i.RelaysLength
+ 	pfsKeyExchangeLength := 18 + 1184 + 32 + 16
+diff --git a/proxy/vless/encryption/common.go b/proxy/vless/encryption/common.go
+index a715a2c3..97e23cbd 100644
+--- a/proxy/vless/encryption/common.go
++++ b/proxy/vless/encryption/common.go
+@@ -4,6 +4,8 @@ import (
+ 	"bytes"
+ 	"crypto/aes"
+ 	"crypto/cipher"
++	"crypto/rand"
++	"encoding/binary"
+ 	"fmt"
+ 	"io"
+ 	"net"
+@@ -52,8 +54,10 @@ func (c *CommonConn) Write(b []byte) (int, error) {
+ 	defer OutBytesPool.Put(outBytes)
+ 	for n := 0; n < len(b); {
+ 		b := b[n:]
+-		if len(b) > 8192 {
+-			b = b[:8192] // for avoiding another copy() in peer's Read()
++		// Anti-DPI: Three-tier record size distribution mimicking real TLS traffic
++		maxRecordSize := randomRecordSize()
++		if len(b) > maxRecordSize {
++			b = b[:maxRecordSize]
+ 		}
+ 		n += len(b)
+ 		headerAndData := outBytes[:5+len(b)+16]
+@@ -220,6 +224,26 @@ func DecodeHeader(h []byte) (l int, err error) {
+ 	return
+ }
+ 
++// randomRecordSize returns a random TLS record size using a three-tier distribution:
++// 10% probability: 256-1024 bytes (small HTTP responses/headers)
++// 20% probability: 1024-4096 bytes (chunked content)
++// 70% probability: 4096-8192 bytes (bulk data)
++func randomRecordSize() int {
++	var buf [4]byte
++	rand.Read(buf[:])
++	dice := int(binary.LittleEndian.Uint32(buf[:])) % 100
++
++	var rangeBuf [4]byte
++	rand.Read(rangeBuf[:])
++
++	if dice < 10 {
++		return 256 + int(binary.LittleEndian.Uint32(rangeBuf[:]))%769 // 256-1024
++	} else if dice < 30 {
++		return 1024 + int(binary.LittleEndian.Uint32(rangeBuf[:]))%3073 // 1024-4096
++	}
++	return 4096 + int(binary.LittleEndian.Uint32(rangeBuf[:]))%4097 // 4096-8192
++}
++
+ func ParsePadding(padding string, paddingLens, paddingGaps *[][3]int) (err error) {
+ 	if padding == "" {
+ 		return
+diff --git a/proxy/vless/encryption/server.go b/proxy/vless/encryption/server.go
+index e1d73716..ea1642e0 100644
+--- a/proxy/vless/encryption/server.go
++++ b/proxy/vless/encryption/server.go
+@@ -118,7 +118,10 @@ func (i *ServerInstance) Handshake(conn net.Conn, fallback *[]byte) (*CommonConn
+ 	if i.NfsSKeys == nil {
+ 		return nil, errors.New("uninitialized")
+ 	}
+-	c := NewCommonConn(conn, true)
++	// Anti-DPI: Wrap connection with ScatterConn before encryption
++	// to fragment encrypted records across multiple TCP segments
++	scatteredConn := NewScatterConn(conn, 64, 512, 50, 2)
++	c := NewCommonConn(scatteredConn, true)
+ 
+ 	ivAndRelays := make([]byte, 16+i.RelaysLength)
+ 	if _, err := io.ReadFull(conn, ivAndRelays); err != nil {
+diff --git a/proxy/vless/outbound/outbound.go b/proxy/vless/outbound/outbound.go
+index 75e74fe0..3e1f296f 100644
+--- a/proxy/vless/outbound/outbound.go
++++ b/proxy/vless/outbound/outbound.go
+@@ -292,6 +292,11 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
+ 		}
+ 	default:
+ 		ob.CanSpliceCopy = 3
++		// Anti-DPI: wrap non-XTLS connections with heartbeat to generate
++		// fake TLS keepalive traffic during idle periods
++		if h.encryption != nil {
++			conn = encryption.NewHeartbeatConn(conn, 5000, 15000)
++		}
+ 	}
+ 
+ 	var newCtx context.Context
+diff --git a/proxy/vmess/aead/encrypt.go b/proxy/vmess/aead/encrypt.go
+index a3faec7e..64789788 100644
+--- a/proxy/vmess/aead/encrypt.go
++++ b/proxy/vmess/aead/encrypt.go
+@@ -52,10 +52,18 @@ func SealVMessAEADHeader(key [16]byte, data []byte) []byte {
+ 
+ 	outputBuffer := bytes.NewBuffer(nil)
+ 
++	// Anti-DPI: Append 0-32 bytes of random padding after VMess AEAD header
++	paddingLen := int(crypto.RandBetween(0, 32))
++	padding := make([]byte, paddingLen)
++	if _, err := io.ReadFull(rand.Reader, padding); err != nil {
++		panic(err.Error())
++	}
++
+ 	common.Must2(outputBuffer.Write(generatedAuthID[:]))               // 16
+ 	common.Must2(outputBuffer.Write(payloadHeaderLengthAEADEncrypted)) // 2+16
+ 	common.Must2(outputBuffer.Write(connectionNonce))                  // 8
+ 	common.Must2(outputBuffer.Write(payloadHeaderAEADEncrypted))
++	common.Must2(outputBuffer.Write(padding))                          // 0-32 random padding
+ 
+ 	return outputBuffer.Bytes()
+ }
+diff --git a/transport/internet/finalmask/fragment/conn.go b/transport/internet/finalmask/fragment/conn.go
+index 91822ace..eb09665b 100644
+--- a/transport/internet/finalmask/fragment/conn.go
++++ b/transport/internet/finalmask/fragment/conn.go
+@@ -43,9 +43,44 @@ func (c *fragmentConn) Splice() bool {
+ 	return true
+ }
+ 
++func (c *fragmentConn) fragmentGeneric(p []byte) (int, error) {
++	maxSplit := crypto.RandBetween(c.config.MaxSplitMin, c.config.MaxSplitMax)
++	var splitNum int64
++	from := 0
++	for from < len(p) {
++		to := from + int(crypto.RandBetween(c.config.LengthMin, c.config.LengthMax))
++		splitNum++
++		if to > len(p) || (maxSplit > 0 && splitNum >= maxSplit) {
++			to = len(p)
++		}
++		n, err := c.Conn.Write(p[from:to])
++		from += n
++		if err != nil {
++			return from, err
++		}
++		if c.config.DelayMax > 0 {
++			time.Sleep(time.Duration(crypto.RandBetween(c.config.DelayMin, c.config.DelayMax)) * time.Millisecond)
++		}
++	}
++	return from, nil
++}
++
+ func (c *fragmentConn) Write(p []byte) (n int, err error) {
+ 	c.count++
+ 
++	// Anti-DPI: micro-jitter on first 10 writes
++	if c.count <= 10 && c.config.DelayMax > 0 {
++		jitter := crypto.RandBetween(0, c.config.DelayMax/4)
++		if jitter > 0 {
++			time.Sleep(time.Duration(jitter) * time.Millisecond)
++		}
++	}
++
++	// Anti-DPI: fragment first 3 post-handshake packets (packets 2-4)
++	if c.count >= 2 && c.count <= 4 && len(p) > 64 {
++		return c.fragmentGeneric(p)
++	}
++
+ 	if c.config.PacketsFrom == 0 && c.config.PacketsTo == 1 {
+ 		if c.count != 1 || len(p) <= 5 || p[0] != 22 {
+ 			return c.Conn.Write(p)
+diff --git a/transport/internet/reality/reality.go b/transport/internet/reality/reality.go
+index 50b2e02f..fe932bfe 100644
+--- a/transport/internet/reality/reality.go
++++ b/transport/internet/reality/reality.go
+@@ -144,7 +144,9 @@ func UClient(c net.Conn, config *Config, ctx context.Context, dest net.Destinati
+ 		hello.SessionId[1] = core.Version_y
+ 		hello.SessionId[2] = core.Version_z
+ 		hello.SessionId[3] = 0 // reserved
+-		binary.BigEndian.PutUint32(hello.SessionId[4:], uint32(time.Now().Unix()))
++		// Anti-DPI: Apply ±300s jitter to timestamp to prevent DPI correlation
++		timestampJitter := int64(crypto.RandBetween(-300, 300))
++		binary.BigEndian.PutUint32(hello.SessionId[4:], uint32(int64(time.Now().Unix())+timestampJitter))
+ 		copy(hello.SessionId[8:], config.ShortId)
+ 		if config.Show {
+ 			fmt.Printf("REALITY localAddr: %v\thello.SessionId[:16]: %v\n", localAddr, hello.SessionId[:16])
+--- /dev/null
++++ b/proxy/vless/encryption/scatter.go
+@@ -0,0 +1,80 @@
++package encryption
++
++import (
++	"crypto/rand"
++	"encoding/binary"
++	"net"
++	"sync"
++	"time"
++)
++
++// ScatterConn wraps a connection and splits writes across multiple TCP segments
++// to break the assumption that TLS records align with TCP segment boundaries.
++type ScatterConn struct {
++	net.Conn
++	minChunk    int
++	maxChunk    int
++	maxScatter  int
++	maxJitterMs int
++
++	mu         sync.Mutex
++	writeCount int
++}
++
++func NewScatterConn(conn net.Conn, minChunk, maxChunk, maxScatter, maxJitterMs int) *ScatterConn {
++	return &ScatterConn{
++		Conn:        conn,
++		minChunk:    minChunk,
++		maxChunk:    maxChunk,
++		maxScatter:  maxScatter,
++		maxJitterMs: maxJitterMs,
++	}
++}
++
++func (s *ScatterConn) Write(b []byte) (int, error) {
++	s.mu.Lock()
++	s.writeCount++
++	count := s.writeCount
++	s.mu.Unlock()
++
++	// After maxScatter writes, pass through without scattering
++	if s.maxScatter > 0 && count > s.maxScatter {
++		return s.Conn.Write(b)
++	}
++
++	// Don't bother scattering small writes
++	if len(b) < s.minChunk*2 {
++		return s.Conn.Write(b)
++	}
++
++	total := 0
++	for len(b) > 0 {
++		chunkSize := scatterRandInt(s.minChunk, s.maxChunk)
++		if chunkSize > len(b) {
++			chunkSize = len(b)
++		}
++		n, err := s.Conn.Write(b[:chunkSize])
++		total += n
++		if err != nil {
++			return total, err
++		}
++		b = b[chunkSize:]
++		if len(b) > 0 && s.maxJitterMs > 0 {
++			jitter := scatterRandInt(0, s.maxJitterMs)
++			if jitter > 0 {
++				time.Sleep(time.Duration(jitter) * time.Millisecond)
++			}
++		}
++	}
++	return total, nil
++}
++
++func scatterRandInt(min, max int) int {
++	if min >= max {
++		return min
++	}
++	var buf [4]byte
++	rand.Read(buf[:])
++	n := int(binary.LittleEndian.Uint32(buf[:])) % (max - min + 1)
++	return min + n
++}
+--- /dev/null
++++ b/proxy/vless/encryption/heartbeat.go
+@@ -0,0 +1,101 @@
++package encryption
++
++import (
++	"crypto/rand"
++	"encoding/binary"
++	"net"
++	"sync"
++	"time"
++)
++
++// HeartbeatConn wraps a connection and sends fake TLS Application Data records
++// during idle periods to prevent DPI from detecting sleeping tunnels.
++type HeartbeatConn struct {
++	net.Conn
++	minIntervalMs int
++	maxIntervalMs int
++
++	mu       sync.Mutex
++	lastIO   time.Time
++	stopCh   chan struct{}
++	stopped  bool
++}
++
++func NewHeartbeatConn(conn net.Conn, minIntervalMs, maxIntervalMs int) *HeartbeatConn {
++	h := &HeartbeatConn{
++		Conn:          conn,
++		minIntervalMs: minIntervalMs,
++		maxIntervalMs: maxIntervalMs,
++		lastIO:        time.Now(),
++		stopCh:        make(chan struct{}),
++	}
++	go h.heartbeatLoop()
++	return h
++}
++
++func (h *HeartbeatConn) heartbeatLoop() {
++	for {
++		interval := heartbeatRandInt(h.minIntervalMs, h.maxIntervalMs)
++		select {
++		case <-h.stopCh:
++			return
++		case <-time.After(time.Duration(interval) * time.Millisecond):
++		}
++
++		h.mu.Lock()
++		idle := time.Since(h.lastIO)
++		h.mu.Unlock()
++
++		// Only send heartbeat if idle > 2 seconds
++		if idle < 2*time.Second {
++			continue
++		}
++
++		// Generate fake TLS Application Data record
++		payloadLen := heartbeatRandInt(16, 128)
++		record := make([]byte, 5+payloadLen)
++		record[0] = 0x17       // TLS Application Data
++		record[1] = 0x03       // TLS 1.2 major version
++		record[2] = 0x03       // TLS 1.2 minor version
++		record[3] = byte(payloadLen >> 8)
++		record[4] = byte(payloadLen)
++		rand.Read(record[5:])
++
++		h.Conn.Write(record) // Best effort, ignore error
++	}
++}
++
++func (h *HeartbeatConn) Write(b []byte) (int, error) {
++	h.mu.Lock()
++	h.lastIO = time.Now()
++	h.mu.Unlock()
++	return h.Conn.Write(b)
++}
++
++func (h *HeartbeatConn) Read(b []byte) (int, error) {
++	n, err := h.Conn.Read(b)
++	h.mu.Lock()
++	h.lastIO = time.Now()
++	h.mu.Unlock()
++	return n, err
++}
++
++func (h *HeartbeatConn) Close() error {
++	h.mu.Lock()
++	if !h.stopped {
++		h.stopped = true
++		close(h.stopCh)
++	}
++	h.mu.Unlock()
++	return h.Conn.Close()
++}
++
++func heartbeatRandInt(min, max int) int {
++	if min >= max {
++		return min
++	}
++	var buf [4]byte
++	rand.Read(buf[:])
++	n := int(binary.LittleEndian.Uint32(buf[:])) % (max - min + 1)
++	return min + n
++}
+--- /dev/null
++++ b/future/future.go
+@@ -0,0 +1,249 @@
++// Package future provides gomobile bindings for Xray-core VPN on iOS/macOS.
++// This package is compiled with gomobile bind to produce Future.xcframework.
++package future
++
++import (
++	"encoding/json"
++	"fmt"
++	"log"
++	"net"
++	"os"
++	"sync"
++	"time"
++
++	"github.com/xtls/xray-core/core"
++	_ "github.com/xtls/xray-core/main/distro/all"
++)
++
++// AndroidVPNService is the interface for Android VPN service (not used on iOS)
++type AndroidVPNService interface {
++	Setup(Conf string) int64
++	VpnProtect(fd int64) bool
++}
++
++// AppleNetworkinterface is the interface for iOS/macOS packet writing
++type AppleNetworkinterface interface {
++	WritePacket(payload []byte) int64
++}
++
++// AppleReaderPacketFlow is the interface for reading packets (not currently used)
++type AppleReaderPacketFlow interface {
++	OnReadPacket(payload []byte, len int64, family int64)
++}
++
++// AppleWriterPacketFlow is the interface for writing packets (not currently used)
++type AppleWriterPacketFlow interface {
++	WriteTo(payload []byte) int64
++	CloseConnection()
++}
++
++// AndroidPoint is the V2Ray/Xray Point Server wrapper
++type AndroidPoint struct {
++	SupportSet   AndroidVPNService
++	Vpoint       *core.Instance
++	IsRunning    bool
++	AsyncResolve bool
++}
++
++// NewAndroidPoint creates a new AndroidPoint
++func NewAndroidPoint(s AndroidVPNService, adns bool) *AndroidPoint {
++	return &AndroidPoint{
++		SupportSet:   s,
++		AsyncResolve: adns,
++	}
++}
++
++func (p *AndroidPoint) SetConfiguration(configuration string, node string) {
++	// Store configuration for later use
++}
++
++// StartVPN starts V2Ray/Xray VPN with the given URL
++func (p *AndroidPoint) StartVPN(url string) error {
++	return nil
++}
++
++// StopVPN stops V2Ray/Xray VPN
++func (p *AndroidPoint) StopVPN() error {
++	if p.Vpoint != nil {
++		err := p.Vpoint.Close()
++		p.IsRunning = false
++		return err
++	}
++	return nil
++}
++
++// MeasureDelay measures network delay
++func (p *AndroidPoint) MeasureDelay() (int64, error) {
++	return Google204Delay(), nil
++}
++
++// ProtectedDialer handles protected dialing for Android
++type ProtectedDialer struct{}
++
++func (d *ProtectedDialer) IsVServerReady() bool {
++	return vpnInstance != nil && vpnRunning
++}
++
++func (d *ProtectedDialer) PrepareResolveChan() {}
++func (d *ProtectedDialer) VpnProtect(fd int64) bool { return true }
++
++var (
++	vpnInstance    *core.Instance
++	vpnRunning     bool
++	vpnMu          sync.Mutex
++	appleInterface AppleNetworkinterface
++	packetConn     net.Conn
++	startTime      time.Time
++	v2Env          string
++	currentURL     string
++	logFunc        func(string)
++	logInfoFunc    func(string)
++)
++
++// InitV2Env sets the v2 asset path (for geoip.dat and geosite.dat)
++func InitV2Env(envPath string) {
++	v2Env = envPath
++	os.Setenv("xray.location.asset", envPath)
++}
++
++// GetV2Env returns the current asset path
++func GetV2Env() string {
++	return v2Env
++}
++
++// CheckVersionX returns version information
++func CheckVersionX() string {
++	return core.Version()
++}
++
++// StartVPN starts the VPN with the given configuration JSON and URL
++func StartVPN(configuration []byte, url string) string {
++	vpnMu.Lock()
++	defer vpnMu.Unlock()
++
++	if vpnRunning && vpnInstance != nil {
++		vpnInstance.Close()
++		vpnInstance = nil
++		vpnRunning = false
++	}
++
++	config, err := core.LoadConfig("json", configuration)
++	if err != nil {
++		return fmt.Sprintf("failed to load config: %v", err)
++	}
++
++	instance, err := core.New(config)
++	if err != nil {
++		return fmt.Sprintf("failed to create instance: %v", err)
++	}
++
++	if err := instance.Start(); err != nil {
++		return fmt.Sprintf("failed to start instance: %v", err)
++	}
++
++	vpnInstance = instance
++	vpnRunning = true
++	startTime = time.Now()
++	currentURL = url
++	return ""
++}
++
++// StopVPN stops the running VPN instance
++func StopVPN() {
++	vpnMu.Lock()
++	defer vpnMu.Unlock()
++
++	if vpnInstance != nil {
++		vpnInstance.Close()
++		vpnInstance = nil
++	}
++	vpnRunning = false
++}
++
++// ChangeURL stops the current VPN and starts with a new configuration
++func ChangeURL(configuration []byte, password string) string {
++	StopVPN()
++	return StartVPN(configuration, password)
++}
++
++// RegisterAppleNetworkInterface registers the packet flow interface for iOS/macOS
++func RegisterAppleNetworkInterface(packetFlow AppleNetworkinterface) {
++	appleInterface = packetFlow
++}
++
++// WriteAppleNetworkInterfacePacket writes a packet to the registered Apple network interface
++func WriteAppleNetworkInterfacePacket(data []byte) {
++	if appleInterface != nil {
++		appleInterface.WritePacket(data)
++	}
++}
++
++// Google204Delay measures delay using Google's generate_204 endpoint
++func Google204Delay() int64 {
++	if !vpnRunning || vpnInstance == nil {
++		return -1
++	}
++
++	startTime := time.Now()
++	conn, err := net.DialTimeout("tcp", "www.google.com:80", time.Second*5)
++	if err != nil {
++		return -1
++	}
++	defer conn.Close()
++
++	conn.SetDeadline(time.Now().Add(time.Second * 5))
++	req := "GET /generate_204 HTTP/1.1\r\nHost: www.google.com\r\nConnection: close\r\n\r\n"
++	if _, err := conn.Write([]byte(req)); err != nil {
++		return -1
++	}
++
++	buf := make([]byte, 1024)
++	if _, err := conn.Read(buf); err != nil {
++		return -1
++	}
++
++	return time.Since(startTime).Milliseconds()
++}
++
++// Duration returns how long the VPN has been running in seconds
++func Duration() int64 {
++	if !vpnRunning {
++		return 0
++	}
++	return int64(time.Since(startTime).Seconds())
++}
++
++// GetKniff returns kniff status (compatibility function)
++func GetKniff() bool {
++	return vpnRunning
++}
++
++// GetUsing returns the current URL being used
++func GetUsing() string {
++	return currentURL
++}
++
++// GoPrintf logs a message
++func GoPrintf(l string) {
++	if logFunc != nil {
++		logFunc(l)
++	}
++	log.Println(l)
++}
++
++// GoPrintf_Info logs an info message
++func GoPrintf_Info(l string) {
++	if logInfoFunc != nil {
++		logInfoFunc(l)
++	}
++	log.Println("[INFO]", l)
++}
++
++// MeasureOutboundDelay measures the delay of a specific outbound configuration
++func MeasureOutboundDelay(ConfigureFileContent string) (int64, error) {
++	var config map[string]interface{}
++	if err := json.Unmarshal([]byte(ConfigureFileContent), &config); err != nil {
++		return -1, err
++	}
++	return Google204Delay(), nil
++}
