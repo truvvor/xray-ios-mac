@@ -111,16 +111,19 @@ jobs:
           cp -R /tmp/xray-build/Future.xcframework xFutureTunnel/Future.xcframework
           echo "Framework replaced"
 
-      - name: Install CocoaPods dependencies
+      - name: Fix Pods deployment target
         run: |
-          export GEM_HOME="$HOME/.gem"
-          export PATH="$GEM_HOME/bin:$HOME/.gem/ruby/2.6.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-          if ! command -v pod &>/dev/null; then
-            echo "Installing CocoaPods..."
-            gem install cocoapods --user-install --no-document
+          echo "Fixing MACOSX_DEPLOYMENT_TARGET in Pods project..."
+          # Fix deployment target in Pods.xcodeproj to avoid libarclite error
+          PODS_PROJ="Pods/Pods.xcodeproj/project.pbxproj"
+          if [ -f "$PODS_PROJ" ]; then
+            sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10\.[0-9]*/MACOSX_DEPLOYMENT_TARGET = 10.15/g' "$PODS_PROJ"
+            echo "Fixed deployment targets in $PODS_PROJ"
+            grep "MACOSX_DEPLOYMENT_TARGET" "$PODS_PROJ" | sort -u
+          else
+            echo "Warning: $PODS_PROJ not found"
+            find . -name "project.pbxproj" -path "*/Pods/*"
           fi
-          pod install --repo-update
-          echo "Pods installed"
 
       - name: Build Xcode project
         run: |
