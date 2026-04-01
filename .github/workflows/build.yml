@@ -14,32 +14,34 @@ jobs:
 
       - name: Install Go
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           if command -v go &>/dev/null; then
             echo "Go found: $(go version)"
             GO_VER=$(go version | grep -oE '[0-9]+\.[0-9]+' | head -1)
             if [ "$(printf '%s\n' "1.26" "$GO_VER" | sort -V | head -1)" = "1.26" ]; then
               echo "Go version is sufficient"
+              echo "/usr/local/bin" >> $GITHUB_PATH
               echo "$HOME/go-sdk/bin" >> $GITHUB_PATH
               echo "$HOME/go/bin" >> $GITHUB_PATH
               exit 0
             fi
             echo "Go version too old, upgrading..."
           fi
-          echo "Installing Go 1.26 to ~/go-sdk (no sudo needed)..."
+          echo "Installing Go 1.26.1 for darwin/amd64..."
           curl -sL https://go.dev/dl/go1.26.1.darwin-amd64.tar.gz -o /tmp/go.tar.gz
           rm -rf "$HOME/go-sdk"
           mkdir -p "$HOME/go-sdk"
           tar -C "$HOME/go-sdk" --strip-components=1 -xzf /tmp/go.tar.gz
           rm /tmp/go.tar.gz
+          echo "/usr/local/bin" >> $GITHUB_PATH
           echo "$HOME/go-sdk/bin" >> $GITHUB_PATH
           echo "$HOME/go/bin" >> $GITHUB_PATH
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           go version
 
       - name: Check prerequisites
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           echo "=== Go ==="
           go version
           echo "=== Xcode ==="
@@ -50,7 +52,7 @@ jobs:
 
       - name: Install gomobile if needed
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           if ! command -v gomobile &>/dev/null; then
             go install golang.org/x/mobile/cmd/gomobile@latest
             go install golang.org/x/mobile/cmd/gobind@latest
@@ -62,22 +64,21 @@ jobs:
           rm -rf /tmp/xray-build
           mkdir -p /tmp/xray-build
           git clone --depth 1 --branch v26.3.27 https://github.com/XTLS/Xray-core.git /tmp/xray-build/Xray-core
-
           # Apply anti-DPI modifications
-          cp Xray-core-mod/proxy/vless/encryption/common.go   /tmp/xray-build/Xray-core/proxy/vless/encryption/common.go
-          cp Xray-core-mod/proxy/vless/encryption/client.go    /tmp/xray-build/Xray-core/proxy/vless/encryption/client.go
-          cp Xray-core-mod/proxy/vless/encryption/server.go    /tmp/xray-build/Xray-core/proxy/vless/encryption/server.go
-          cp Xray-core-mod/proxy/vless/encoding/addons.go      /tmp/xray-build/Xray-core/proxy/vless/encoding/addons.go
-          cp Xray-core-mod/proxy/vless/outbound/outbound.go    /tmp/xray-build/Xray-core/proxy/vless/outbound/outbound.go
-          cp Xray-core-mod/proxy/vmess/aead/encrypt.go         /tmp/xray-build/Xray-core/proxy/vmess/aead/encrypt.go
+          cp Xray-core-mod/proxy/vless/encryption/common.go /tmp/xray-build/Xray-core/proxy/vless/encryption/common.go
+          cp Xray-core-mod/proxy/vless/encryption/client.go /tmp/xray-build/Xray-core/proxy/vless/encryption/client.go
+          cp Xray-core-mod/proxy/vless/encryption/server.go /tmp/xray-build/Xray-core/proxy/vless/encryption/server.go
+          cp Xray-core-mod/proxy/vless/encoding/addons.go /tmp/xray-build/Xray-core/proxy/vless/encoding/addons.go
+          cp Xray-core-mod/proxy/vless/outbound/outbound.go /tmp/xray-build/Xray-core/proxy/vless/outbound/outbound.go
+          cp Xray-core-mod/proxy/vmess/aead/encrypt.go /tmp/xray-build/Xray-core/proxy/vmess/aead/encrypt.go
           cp Xray-core-mod/transport/internet/reality/reality.go /tmp/xray-build/Xray-core/transport/internet/reality/reality.go
           cp Xray-core-mod/transport/internet/finalmask/fragment/conn.go /tmp/xray-build/Xray-core/transport/internet/finalmask/fragment/conn.go
-          cp Xray-core-mod/proxy/vless/encryption/scatter.go   /tmp/xray-build/Xray-core/proxy/vless/encryption/scatter.go
+          cp Xray-core-mod/proxy/vless/encryption/scatter.go /tmp/xray-build/Xray-core/proxy/vless/encryption/scatter.go
           cp Xray-core-mod/proxy/vless/encryption/heartbeat.go /tmp/xray-build/Xray-core/proxy/vless/encryption/heartbeat.go
 
       - name: Prepare libXray
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           cp -r libXray /tmp/xray-build/libXray
           cd /tmp/xray-build/libXray
           # Update replace directive to point to build dir
@@ -86,14 +87,14 @@ jobs:
 
       - name: Verify Go build
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           cd /tmp/xray-build/libXray
           go build $(go list ./... | grep -v build/template | grep -v download_geo | grep -v desktop_bin)
           echo "Go build: OK"
 
       - name: Build Future.xcframework
         run: |
-          export PATH="$HOME/go-sdk/bin:$HOME/go/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/go-sdk/bin:$HOME/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           cd /tmp/xray-build/libXray
           gomobile bind \
             -target=ios,macos \
