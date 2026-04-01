@@ -27,7 +27,7 @@ jobs:
             echo "Go version too old, upgrading..."
           fi
           echo "Installing Go 1.26 to ~/go-sdk (no sudo needed)..."
-          curl -sL https://go.dev/dl/go1.26.0.darwin-arm64.tar.gz -o /tmp/go.tar.gz
+          curl -sL https://go.dev/dl/go1.26.1.darwin-amd64.tar.gz -o /tmp/go.tar.gz
           rm -rf "$HOME/go-sdk"
           mkdir -p "$HOME/go-sdk"
           tar -C "$HOME/go-sdk" --strip-components=1 -xzf /tmp/go.tar.gz
