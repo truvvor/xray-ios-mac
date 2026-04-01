@@ -20,7 +20,7 @@
 
 
 
-@interface LVFutureManager ()<FutureAppleNetworkinterface>
+@interface LVFutureManager ()<LibXrayAppleNetworkinterface>
 
 @end
 
@@ -78,7 +78,7 @@
     NSString *file = [[NSBundle mainBundle] pathForResource:@"geosite" ofType:@"dat"];
     if (file && [[NSFileManager defaultManager] fileExistsAtPath:file]) {
         NSString *path = [[[NSBundle mainBundle] resourcePath] stringByAppendingString:@"/"];
-        FutureInitV2Env(path);
+        LibXrayInitV2Env(path);
     }
 }
 
@@ -97,7 +97,7 @@
 }
 
 +(NSString *)version {
-    return [NSString stringWithFormat:@"%@-%@",@"25", FutureCheckVersionX()];
+    return [NSString stringWithFormat:@"%@-%@",@"25", LibXrayCheckVersionX()];
 }
 
 - (void)setPacketTunnelProvider:(NEPacketTunnelProvider *)provider {
@@ -163,7 +163,7 @@
         return completionHandler(error);
     }
     NSData *c = [NSJSONSerialization dataWithJSONObject:xray options:NSJSONWritingPrettyPrinted error:nil];
-    NSString *r = FutureStartVPN(c, payload);
+    NSString *r = LibXrayStartVPN(c, payload);
     if (r.length > 0){
         NSLog(@"Start vpn instance:%@", r);
         NSError *error = [NSError errorWithDomain:@"Invalid json" code:204 userInfo:nil];
@@ -171,7 +171,7 @@
         return;
     }
     NSLog(@"vpn configuration: %@", xray);
-    FutureRegisterAppleNetworkInterface(self);
+    LibXrayRegisterAppleNetworkInterface(self);
     _mRunning = YES;
     __weak LVFutureManager *weakSelf = self;
     NEPacketTunnelNetworkSettings *networkSettings = [self createNetworkSetting];
@@ -184,7 +184,7 @@
 }
 
 - (void)stopTunnelWithReason:(NEProviderStopReason)reason completionHandler:(void (^)(void))completionHandler {
-    FutureStopVPN();
+    LibXrayStopVPN();
     completionHandler();
 }
 
@@ -196,15 +196,15 @@
         return NO;
     }
     NSData *c = [NSJSONSerialization dataWithJSONObject:xray options:NSJSONWritingPrettyPrinted error:nil];
-    NSString *r = FutureChangeURL(c, url);
+    NSString *r = LibXrayChangeURL(c, url);
     NSLog(@"Restart vpn instance:%@", r);
-    FutureRegisterAppleNetworkInterface(self);
+    LibXrayRegisterAppleNetworkInterface(self);
     _mRunning = YES;
     return r.length == 0;
 }
 
 + (int64_t)duration {
-    return FutureDuration();
+    return LibXrayDuration();
 }
 
 - (NSArray<NSString *> *)DNS {
@@ -237,7 +237,7 @@
         __strong LVFutureManager *strongSelf = weakSelf;
         if (strongSelf->_mRunning) {
             for (int i = 0; i < (int)packets.count; i ++) {
-                FutureWriteAppleNetworkInterfacePacket(packets[i]);
+                LibXrayWriteAppleNetworkInterfacePacket(packets[i]);
             }
         }
         [strongSelf readPackets];
@@ -254,14 +254,14 @@
 
 - (void)google204Delay:(nullable VPNDelayResponse)response {
     dispatch_async(dispatch_get_global_queue(0, 0 ), ^{
-        int64_t duration = FutureGoogle204Delay();
+        int64_t duration = LibXrayGoogle204Delay();
         response(duration != -1, duration);
     });
 }
 
 - (void)getStats {
-//    int64_t downlink = FutureQueryStats(@"proxy", @"downlink");
-//    int64_t uplink = FutureQueryStats(@"proxy", @"uplink");
+//    int64_t downlink = LibXrayQueryStats(@"proxy", @"downlink");
+//    int64_t uplink = LibXrayQueryStats(@"proxy", @"uplink");
 //    if ([self.delegate respondsToSelector:@selector(onConnectionSpeedReport:uplink:)]) {
 //        [self.delegate onConnectionSpeedReport:downlink uplink:NO];
 //        [self.delegate onConnectionSpeedReport:uplink uplink:YES];
