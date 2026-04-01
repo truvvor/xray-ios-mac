@@ -12,8 +12,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Go
+        run: |
+          if command -v go &>/dev/null; then
+            echo "Go already installed: $(go version)"
+            GO_VER=$(go version | grep -oE '[0-9]+\.[0-9]+' | head -1)
+            if [ "$(printf '%s\n' "1.26" "$GO_VER" | sort -V | head -1)" = "1.26" ]; then
+              echo "Go version is sufficient"
+              exit 0
+            fi
+            echo "Go version too old, upgrading..."
+          fi
+          echo "Installing Go 1.26..."
+          curl -sL https://go.dev/dl/go1.26.0.darwin-arm64.tar.gz -o /tmp/go.tar.gz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+          rm /tmp/go.tar.gz
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+          go version
+
       - name: Check prerequisites
         run: |
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
           echo "=== Go ==="
           go version
           echo "=== Xcode ==="
@@ -24,6 +46,7 @@ jobs:
 
       - name: Install gomobile if needed
         run: |
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
           if ! command -v gomobile &>/dev/null; then
             go install golang.org/x/mobile/cmd/gomobile@latest
             go install golang.org/x/mobile/cmd/gobind@latest
@@ -50,6 +73,7 @@ jobs:
 
       - name: Prepare libXray
         run: |
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
           cp -r libXray /tmp/xray-build/libXray
           cd /tmp/xray-build/libXray
           # Update replace directive to point to build dir
@@ -58,12 +82,14 @@ jobs:
 
       - name: Verify Go build
         run: |
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
           cd /tmp/xray-build/libXray
           go build $(go list ./... | grep -v build/template | grep -v download_geo | grep -v desktop_bin)
           echo "Go build: OK"
 
       - name: Build Future.xcframework
         run: |
+          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
           cd /tmp/xray-build/libXray
           gomobile bind \
             -target=ios,macos \
