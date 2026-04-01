@@ -98,7 +98,7 @@ jobs:
           cd /tmp/xray-build/libXray
           go get golang.org/x/mobile/bind@latest
           gomobile bind \
-            -target=macos \
+            -target=ios,macos \
             -o /tmp/xray-build/Future.xcframework \
             -ldflags="-s -w" \
             .
