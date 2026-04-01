@@ -118,7 +118,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tail -20
+            build
 
       - name: Cleanup
         if: always()
