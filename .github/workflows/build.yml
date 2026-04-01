@@ -111,6 +111,16 @@ jobs:
           cp -R /tmp/xray-build/Future.xcframework xFutureTunnel/Future.xcframework
           echo "Framework replaced"
 
+      - name: Install CocoaPods dependencies
+        run: |
+          export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+          if ! command -v pod &>/dev/null; then
+            echo "Installing CocoaPods..."
+            sudo gem install cocoapods
+          fi
+          pod install --repo-update
+          echo "Pods installed"
+
       - name: Build Xcode project
         run: |
           xcodebuild -workspace xNetFuture.xcworkspace \
