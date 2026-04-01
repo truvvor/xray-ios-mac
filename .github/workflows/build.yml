@@ -83,6 +83,7 @@ jobs:
           cd /tmp/xray-build/libXray
           # Update replace directive to point to build dir
           sed -i '' "s|replace github.com/xtls/xray-core => ../Xray-core|replace github.com/xtls/xray-core => /tmp/xray-build/Xray-core|" go.mod
+          go get golang.org/x/mobile@latest
           go mod tidy
 
       - name: Verify Go build
