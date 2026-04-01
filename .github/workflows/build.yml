@@ -1,0 +1,93 @@
+name: Build Future.xcframework
+
+on:
+  push:
+    branches: [ 'claude/xray-core-ios-protocol-BUCik' ]
+  workflow_dispatch:
+
+jobs:
+  build-framework:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check prerequisites
+        run: |
+          echo "=== Go ==="
+          go version
+          echo "=== Xcode ==="
+          xcodebuild -version
+          echo "=== gomobile ==="
+          which gomobile || echo "gomobile not found - will install"
+          which gobind || echo "gobind not found - will install"
+
+      - name: Install gomobile if needed
+        run: |
+          if ! command -v gomobile &>/dev/null; then
+            go install golang.org/x/mobile/cmd/gomobile@latest
+            go install golang.org/x/mobile/cmd/gobind@latest
+            gomobile init
+          fi
+
+      - name: Clone and patch Xray-core
+        run: |
+          rm -rf /tmp/xray-build
+          mkdir -p /tmp/xray-build
+          git clone --depth 1 --branch v26.3.27 https://github.com/XTLS/Xray-core.git /tmp/xray-build/Xray-core
+
+          # Apply anti-DPI modifications
+          cp Xray-core-mod/proxy/vless/encryption/common.go   /tmp/xray-build/Xray-core/proxy/vless/encryption/common.go
+          cp Xray-core-mod/proxy/vless/encryption/client.go    /tmp/xray-build/Xray-core/proxy/vless/encryption/client.go
+          cp Xray-core-mod/proxy/vless/encryption/server.go    /tmp/xray-build/Xray-core/proxy/vless/encryption/server.go
+          cp Xray-core-mod/proxy/vless/encoding/addons.go      /tmp/xray-build/Xray-core/proxy/vless/encoding/addons.go
+          cp Xray-core-mod/proxy/vless/outbound/outbound.go    /tmp/xray-build/Xray-core/proxy/vless/outbound/outbound.go
+          cp Xray-core-mod/proxy/vmess/aead/encrypt.go         /tmp/xray-build/Xray-core/proxy/vmess/aead/encrypt.go
+          cp Xray-core-mod/transport/internet/reality/reality.go /tmp/xray-build/Xray-core/transport/internet/reality/reality.go
+          cp Xray-core-mod/transport/internet/finalmask/fragment/conn.go /tmp/xray-build/Xray-core/transport/internet/finalmask/fragment/conn.go
+          cp Xray-core-mod/proxy/vless/encryption/scatter.go   /tmp/xray-build/Xray-core/proxy/vless/encryption/scatter.go
+          cp Xray-core-mod/proxy/vless/encryption/heartbeat.go /tmp/xray-build/Xray-core/proxy/vless/encryption/heartbeat.go
+
+      - name: Prepare libXray
+        run: |
+          cp -r libXray /tmp/xray-build/libXray
+          cd /tmp/xray-build/libXray
+          # Update replace directive to point to build dir
+          sed -i '' "s|replace github.com/xtls/xray-core => ../Xray-core|replace github.com/xtls/xray-core => /tmp/xray-build/Xray-core|" go.mod
+          go mod tidy
+
+      - name: Verify Go build
+        run: |
+          cd /tmp/xray-build/libXray
+          go build $(go list ./... | grep -v build/template | grep -v download_geo | grep -v desktop_bin)
+          echo "Go build: OK"
+
+      - name: Build Future.xcframework
+        run: |
+          cd /tmp/xray-build/libXray
+          gomobile bind \
+            -target=ios,macos \
+            -o /tmp/xray-build/Future.xcframework \
+            -ldflags="-s -w" \
+            .
+          echo "Framework built successfully"
+          ls -la /tmp/xray-build/Future.xcframework/
+
+      - name: Replace framework in project
+        run: |
+          rm -rf xFutureTunnel/Future.xcframework
+          cp -R /tmp/xray-build/Future.xcframework xFutureTunnel/Future.xcframework
+          echo "Framework replaced"
+
+      - name: Build Xcode project
+        run: |
+          xcodebuild -workspace xNetFuture.xcworkspace \
+            -scheme xNetFuture \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tail -20
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf /tmp/xray-build
